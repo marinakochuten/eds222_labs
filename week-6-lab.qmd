@@ -41,16 +41,26 @@ Where $PMF(y_i, p_i)$ is the value of the Bernoulli probability mass function wi
 
 ```{r}
 # Simulate some values for x
+x <- runif(10, 0, 10)
 
 # Choose our betas
+beta0 <- -3
+beta1 <- 0.75
 
 # Calculate p across x 
+logit_p <- beta0 + beta1 * x
+inv_logit <- function(x) exp(x) / (1 + exp(x))
+p <- inv_logit(logit_p)
 
 # Simulate y
 # Note: rbinom() with size = 1 is equivalent to a random Bernoulli variable
+y <- rbinom(10, size = 1, p)
 
 # Visualize
-
+tibble(x, y) |>
+  ggplot(aes(x, y)) +
+  geom_point(size = 4, color = "cornflowerblue", shape = 18) +
+  scale_x_continuous(breaks = seq(0, 10, by = 2), limits = c(0, 10))
 ```
 
 ### Likelihood of a few options
@@ -67,9 +77,16 @@ Calculate the likelihood of:
 # Write our likelihood function 
 # Note this uses the x and y values we generated earlier!
 # We're looking for the likelihood of the parameters given the data.
+likelihood_fun <- function(beta0, beta1) {
+  logit_p <- beta0 + beta1 * x
+  p <- inv_logit(logit_p)
+  prod(dbinom(y, size = 1, p))
+}
 
 # Apply the likelihood function to some candidate coefficients
-
+likelihood_fun(-5, 1)
+likelihood_fun(-1, 0)
+likelihood_fun(-3, 0.5)
 ```
 
 ### Likelihood of a lot of options
@@ -78,12 +95,20 @@ Calculate the likelihood of 1,000,000 combinations of $\beta_0$, $\beta_1$ in th
 
 ```{r}
 # Create a data frame with combinations of beta0, beta1
- # Apply the likelihood function using mapply()
+likelihood_space <- expand_grid(
+  beta0 = seq(-5, 0, length.out = 1000),
+  beta1 = seq(-1, 2, length.out = 1000)
+) |>
+# Apply the likelihood function using mapply()
+  mutate(likelihood = mapply(likelihood_fun, beta0, beta1))
 
 # Isolate the parameters with the maximum likelihood
-
+max_likelihood <- filter(likelihood_space, likelihood == max(likelihood))
 # Visualize!
-
+ggplot(likelihood_space, aes(beta0, beta1, fill = likelihood)) +
+  geom_raster() +
+  geom_point(data = max_likelihood, color = "red") +
+  scale_fill_viridis_c()
 ```
 
 Our estimates for $\beta_0$ and $\beta_1$ chosen by maximum likelihood are `r #round(max_likelihood$beta0, 3)` and `r #round(max_likelihood$beta1, 3)`, respectively. Compare those to the values we used in our simulation: -3 and 0.75.
