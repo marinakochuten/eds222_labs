@@ -89,7 +89,7 @@ drinking_water <- drinking_water |>
 ```
 
 4.  Create a scatter plot of violations against race (percent Black population), ethnicity (percent Hispanic population), and SES (median household income). What visualization issues do we get with a scatter plot? How could you address that?\
-    - The points are overplotted i.e., too many are overlapping to see the trend. We can summarize within bins to view the patterns
+    -   The points are overplotted i.e., too many are overlapping to see the trend. We can summarize within bins to view the patterns
 
 ```{r}
 
@@ -232,6 +232,17 @@ tibble(pcthisp = 0:100,
 3.  How much does the probability of a drinking water violation change when percent Hispanic population increases from 10 to 20%, 45 to 55%, and 80 to 90%?
 
 ```{r}
+# 10 to 20 %
+inv_logit(beta0_hat + beta1_hat*20) - inv_logit(beta0_hat + beta1_hat*10)
+
+# 45 to 55 %
+inv_logit(beta0_hat + beta1_hat*55) - inv_logit(beta0_hat + beta1_hat*45)
+
+# 80 to 90 %
+inv_logit(beta0_hat + beta1_hat*90) - inv_logit(beta0_hat + beta1_hat*80)
+
+# doing it all at once
+(inv_logit(beta0_hat + beta1_hat*c(20, 55, 90))) - (inv_logit(beta0_hat + beta1_hat*c(10,45,80)))
 ```
 
 4.  How would you interpret the coefficients? What do the slope and intercept mean in this context? Where is the relationship linear, and where is it non-linear?
@@ -239,23 +250,25 @@ tibble(pcthisp = 0:100,
     Bonus problem: add contours!
 
 ```{r}
-likelihood_dem <- expand_grid(
-  ???,
-  ???
+likelihood_dem <- expand_grid( 
+  beta0 = seq(-3, -2, length.out = 20),
+  beta1 = seq(0, 0.01, length.out = 20)
 ) %>% 
   mutate(coefficients = mapply(function(b0, b1) c(beta0 = b0, beta1 = b1),
-                               ???, ???,
+                               beta0, beta1,
                                SIMPLIFY = FALSE),
          negloglik = sapply(coefficients, 
-                            ???, 
-                            data = ???),
-         likelihood = ???)
+                            likelihood_fun, 
+                            data = drinking_water_complete),
+         likelihood = exp(-negloglik))
 
-ggplot(likelihood_dem, aes(???, ???, fill = ???)) +
+ggplot(likelihood_dem, aes(beta0, beta1, fill = negloglik)) +
   geom_raster() +
-  geom_point(x = ???, y = ???, color = "red")
+  geom_point(x = beta0_hat, y = beta1_hat, color = "red")
 
 ```
+
+**our model is really sensitive to the intercept (beta0) we choose. our uncertainty for beta 0 is really low! with beta 1, big changes lead to really smaller changes in likelihood, leaving our confidence interval high.**
 
 # Fit the full logistic regression model using `glm()`
 
@@ -264,7 +277,7 @@ Normally we won't need to write our own likelihood functions and use optimizatio
 Here's how to fit the same model from the previous section. Notice the formula and data arguments look very similar to what we'd use for `lm()`. But now we have to specify the response variable's "family" (i.e., the type of random variable) and the link function we want to use (logit, in our case).
 
 ```{r}
-pcthisp_glm <- glm(violations ~ pcthisp, 
+pcthisp_glm <- glm(violation ~ pcthisp, 
                    family = binomial(link = "logit"),
                    data = drinking_water)
 summary(pcthisp_glm)
@@ -276,7 +289,11 @@ summary(pcthisp_glm)
 1.  How would you fit a model that includes an interaction term between ethnicity and SES?
 
 ```{r}
-interaction_glm <- ???
+# SES = medianincomehouse
+# ethnicity = pcthisp
+interaction_glm <- glm(violation ~ pcthisp + medianincomehouse + pcthisp : medianincomehouse,
+                       family = binomial(link = "logit"),
+                       data = drinking_water)
 summary(interaction_glm)
 
 ```
@@ -285,15 +302,17 @@ summary(interaction_glm)
 
 ```{r}
 predictions <- expand_grid(
-  pcthisp = ???,
-  medianincomehouse = ???
+  pcthisp = 0:100,
+  medianincomehouse = seq(20000, 100000, length.out = 100)
 ) %>% 
-  mutate(violations = predict(???, 
+  mutate(violations = predict(interaction_glm, 
                               newdata = ., 
-                              type = ???))
+                              type = "response"))
 
 # Create plot
-
+ggplot(predictions, aes(pcthisp, medianincomehouse, fill = violations)) +
+  geom_raster() +
+  scale_fill_distiller(palette = 'Reds', direction = 1)
 ```
 
 3.  Interpret the predicted surface. How does SES influence the relationship between ethnicity and exposure to environmental hazards? What is the "slope" of the probability of a violation w.r.t. percent Hispanic population at low, medium, and high median household income levels?\
