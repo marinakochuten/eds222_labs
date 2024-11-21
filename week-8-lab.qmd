@@ -286,9 +286,42 @@ Revisit the visualization of the blood and feather Pb levels. One point seems to
 ```{r}
 #| label: remove-outlier
 
+no_outlier <- nestlingpb_data |>
+  filter(blood_ug_dl_pbwt < 40)
+
+# State hypotheses (done)
+
+# Calculate point estimate
+
+no_outlier_lm <- lm(feather_ug_g_pbwt ~ blood_ug_dl_pbwt,
+                        no_outlier)
+summary(no_outlier_lm)
+
+# Quantify the uncertainty (estimate + SE)
+
+beta1_est_no_outlier <- summary(no_outlier_lm)$coefficients[2, 1]
+beta1_se_no_outlier <- summary(no_outlier_lm)$coefficients[2, 2]
+
+tibble(beta1 = seq(-(beta1_est_no_outlier + beta1_se_no_outlier),
+                   (beta1_est_no_outlier + beta1_se_no_outlier),
+                   length.out = 200),
+       density = dnorm(beta1, mean = 0, sd = beta1_se_no_outlier)) |>
+  ggplot(aes(beta1, density)) +
+  geom_line(color = "cornflowerblue") +
+  geom_vline(xintercept = beta1_est_no_outlier, color = "firebrick")
+
+# Calculate p value
+
+pval_no_outlier <- 2 * pnorm(-abs(beta1_est_no_outlier), mean = 0, sd = beta1_se_no_outlier)
+pval_no_outlier
+
+# Interpret
+# We can reject the null hypothesis because 0.0033 < 0.05. 
 ```
 
 **Question:** Of the two analyses (with and without the outlier), which had a lower p-value? Does that make it a better analysis?
+
+**with the outlier had a lower p value. no, this does not make it a better analysis.**
 
 ## Confidence intervals
 
@@ -307,6 +340,30 @@ For the last part of today's lab we will construct confidence intervals around t
 ```{r}
 #| label: blood-feather-pop
 
+# Simulate the population
+# Extract our estimates for beta0, beta1, and sigma (SD of predictions)
+
+beta0_estimate <- summary(no_outlier_lm)$coefficients[1, 1]
+beta1_estimate <- summary(no_outlier_lm)$coefficients[2, 1]
+sigma_estimate <- summary(no_outlier_lm)$sigma
+blood_feather_pop <- tibble(
+  # predictor
+  blood_ug_dl_pbwt = runif(1e4,
+                           min(no_outlier$blood_ug_dl_pbwt),
+                           max(no_outlier$blood_ug_dl_pbwt)),
+  # Mean response
+  mean_feather = beta0_estimate + beta1_estimate * blood_ug_dl_pbwt,
+  # Simulated response
+  feather_ug_g_pbwt = rnorm(1e4, mean = mean_feather, sd = sigma_estimate)
+)
+
+# Visualize
+ggplot(blood_feather_pop, aes(blood_ug_dl_pbwt, feather_ug_g_pbwt)) +
+  geom_point(shape = 21)
+
+# Verify coefficients match inputs
+c(beta0_estimate, beta1_estimate)
+summary(lm(feather_ug_g_pbwt ~ blood_ug_dl_pbwt, data = blood_feather_pop))
 ```
 
 ### 2. Create one confidence interval
@@ -314,6 +371,19 @@ For the last part of today's lab we will construct confidence intervals around t
 ```{r}
 #| label: blood-feather-ci
 
+# Draw a sample
+blood_feather_sample <- sample_n(blood_feather_pop, 21)
+
+# Calculate point estimate and standard error FROM THE SAMPLE
+sample_lm <- lm(feather_ug_g_pbwt ~ blood_ug_dl_pbwt, blood_feather_sample)
+pe <- summary(sample_lm)$coefficients[2,1]
+se <- summary(sample_lm)$coefficients[2,2]
+
+sample_ci <- c(point_estimate = pe,
+               ci95_lower = pe - 1.96 * se,
+               ci95_upper = pe + 1.96 * se)
+
+sample_ci
 ```
 
 ### 3. Repeat the process
@@ -323,6 +393,35 @@ How many 95% CIs contain the population parameter?
 ```{r}
 #| label: repeat-ci
 
+repeat_ci <- replicate(100, {
+  # Draw a sample
+  blood_feather_sample <- sample_n(blood_feather_pop, 21)
+  
+  # Calculate point estimate and standard error FROM THE SAMPLE
+  sample_lm <- lm(feather_ug_g_pbwt ~ blood_ug_dl_pbwt, blood_feather_sample)
+  pe <- summary(sample_lm)$coefficients[2,1]
+  se <- summary(sample_lm)$coefficients[2,2]
+  
+  sample_ci <- c(point_estimate = pe,
+                 ci95_lower = pe - 1.96 * se,
+                 ci95_upper = pe + 1.96 * se)
+  
+  sample_ci
+})
+
+tibble(point_estimate = repeat_ci[1, ],
+       ci95_lower = repeat_ci[2, ],
+       ci95_upper = repeat_ci[3, ],
+       ci = 1:100) |>
+  mutate(valid = beta1_estimate >= ci95_lower &
+           beta1_estimate <= ci95_upper) |>
+  ggplot() +
+  geom_pointrange(aes(x = point_estimate,
+                      xmin = ci95_lower,
+                      xmax = ci95_upper,
+                      y = ci,
+                      color = valid)) +
+  geom_vline(xintercept = beta1_estimate, color = "firebrick")
 ```
 
 ## Recap
